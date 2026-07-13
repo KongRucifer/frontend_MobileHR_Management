@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "217438440153",
+    "project_id": "lts-checkin",
+    "storage_bucket": "lts-checkin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:217438440153:android:77a2f12c428db7d2a7ccc8",
+        "android_client_info": {
+          "package_name": "la.hrapp.hr_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFUmoQh6Y8wzL36KR4s1e_HpXgkFOXGRk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
