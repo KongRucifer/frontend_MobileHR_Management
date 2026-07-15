@@ -34,10 +34,11 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> login(String email, String password) async {
+  /// Login is by username (email is only used for notifications / OTP).
+  Future<void> login(String username, String password) async {
     final res = await Api.dio.post(
       '/auth/login',
-      data: {'email': email, 'password': password},
+      data: {'username': username, 'password': password},
     );
     await _apply(res.data);
   }
@@ -47,7 +48,7 @@ class AuthController extends StateNotifier<AuthState> {
     required String lastName,
     required String email,
     required String password,
-    String? username,
+    required String username,
     String? phone,
     String? birthDate,
     String? departmentId,
@@ -58,7 +59,7 @@ class AuthController extends StateNotifier<AuthState> {
       'lastName': lastName,
       'email': email,
       'password': password,
-      if (username != null && username.isNotEmpty) 'username': username,
+      'username': username,
       if (phone != null && phone.isNotEmpty) 'phone': phone,
       if (birthDate != null && birthDate.isNotEmpty) 'birthDate': birthDate,
       if (departmentId != null) 'departmentId': departmentId,

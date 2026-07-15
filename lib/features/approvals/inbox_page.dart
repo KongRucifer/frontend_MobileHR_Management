@@ -25,7 +25,7 @@ class InboxPage extends ConsumerWidget {
   }
 }
 
-/// Approval inbox body. Combined leave + sick requests this user can act on.
+/// Approval inbox body. Combined leave + emergency requests this user can act on.
 class InboxView extends ConsumerWidget {
   const InboxView({super.key});
 
@@ -106,8 +106,8 @@ class _InboxCard extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Text(
                   isLeave
-                      ? tr('leave', lang)
-                      : '${tr('sick', lang)} · ${r['sickType'] ?? ''}',
+                      ? '${tr('leave', lang)}${r['leaveType'] != null ? ' · ${r['leaveType']}' : ''}'
+                      : '${tr('emergency', lang)}${r['emergencyType'] != null ? ' · ${r['emergencyType']}' : ''}',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const Spacer(),
@@ -120,14 +120,26 @@ class _InboxCard extends ConsumerWidget {
             const SizedBox(height: 8),
             Text((requester?['name'] ?? '—').toString(),
                 style: const TextStyle(fontWeight: FontWeight.w600)),
-            if (isLeave)
-              Text('${prettyDate(r['startDate'])}  →  ${prettyDate(r['endDate'])}',
+            if (r['startDate'] != null && r['endDate'] != null)
+              Text(
+                  '${prettyDate(r['startDate'])}${r['startTime'] != null ? ' ${r['startTime']}' : ''}'
+                  '  →  '
+                  '${prettyDate(r['endDate'])}${r['endTime'] != null ? ' ${r['endTime']}' : ''}',
                   style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context)
                           .colorScheme
                           .onSurface
                           .withValues(alpha: 0.6))),
+            // Summary: total days (+ working hours when a time window was set).
+            if (r['days'] != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                summaryText(lang, (r['days'] as num).toInt(), r['hours'] as num?),
+                style: const TextStyle(
+                    fontSize: 12, color: kBrand, fontWeight: FontWeight.w600),
+              ),
+            ],
             if ((r['reason'] ?? '').toString().isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(r['reason'].toString(),
@@ -209,7 +221,7 @@ class _DecisionPageState extends ConsumerState<DecisionPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isLeave ? tr('leave', lang) : tr('sick', lang)),
+        title: Text(isLeave ? tr('leave', lang) : tr('emergency', lang)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -244,11 +256,18 @@ class _DecisionPageState extends ConsumerState<DecisionPage> {
                   _InfoRow(Icons.phone_rounded, requester!['phone'].toString()),
                 if ((requester?['email'] ?? '').toString().isNotEmpty)
                   _InfoRow(Icons.email_rounded, requester!['email'].toString()),
-                if (!isLeave && (r['sickType'] ?? '').toString().isNotEmpty)
-                  _InfoRow(Icons.healing_rounded, r['sickType'].toString()),
-                if (isLeave)
-                  _InfoRow(Icons.date_range_rounded,
-                      '${prettyDate(r['startDate'])}  →  ${prettyDate(r['endDate'])}'),
+                if (r['startDate'] != null && r['endDate'] != null)
+                  _InfoRow(
+                      Icons.date_range_rounded,
+                      '${prettyDate(r['startDate'])}${r['startTime'] != null ? ' ${r['startTime']}' : ''}'
+                      '  →  '
+                      '${prettyDate(r['endDate'])}${r['endTime'] != null ? ' ${r['endTime']}' : ''}'),
+                // Summary the approver can judge at a glance.
+                if (r['days'] != null)
+                  _InfoRow(
+                      Icons.event_available_rounded,
+                      summaryText(
+                          lang, (r['days'] as num).toInt(), r['hours'] as num?)),
                 if ((r['reason'] ?? '').toString().isNotEmpty)
                   _InfoRow(Icons.notes_rounded, r['reason'].toString()),
               ],

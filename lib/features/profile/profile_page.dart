@@ -5,6 +5,7 @@ import '../../core/i18n.dart';
 import '../../core/settings.dart';
 import '../../core/theme.dart';
 import '../auth/auth_provider.dart';
+import '../requests/request_widgets.dart';
 
 /// The logged-in employee's own record (for display + editing).
 final myEmployeeProvider =
@@ -40,7 +41,10 @@ class ProfilePage extends ConsumerWidget {
         : (user?.username ?? user?.email ?? '');
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr('profile', lang))),
+      appBar: AppBar(
+        title: Text(tr('profile', lang)),
+        actions: const [NotifBell(), SizedBox(width: 4)],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
         children: [
@@ -114,6 +118,12 @@ class ProfilePage extends ConsumerWidget {
             title: tr('change_password', lang),
             onTap: () => _openChangePassword(context, ref, lang),
           ),
+          _actionTile(
+            context,
+            icon: Icons.alternate_email_rounded,
+            title: tr('update_email', lang),
+            onTap: () => _openUpdateEmail(context, ref, lang),
+          ),
 
           const SizedBox(height: 12),
           _tile(
@@ -176,13 +186,33 @@ class ProfilePage extends ConsumerWidget {
   }
 
   void _openChangePassword(BuildContext context, WidgetRef ref, String lang) {
+    final email = ref.read(authProvider).user?.email ?? '';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => _ChangePasswordSheet(
         lang: lang,
+        email: email,
         onDone: () => _toast(context, tr('password_changed', lang), ok: true),
+        onError: (m) => _toast(context, m, ok: false),
+      ),
+    );
+  }
+
+  void _openUpdateEmail(BuildContext context, WidgetRef ref, String lang) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _UpdateEmailSheet(
+        lang: lang,
+        currentEmail: ref.read(authProvider).user?.email ?? '',
+        onDone: () {
+          // Refresh the session so the new email shows immediately.
+          ref.read(authProvider.notifier).loadSession();
+          _toast(context, tr('email_updated', lang), ok: true);
+        },
         onError: (m) => _toast(context, m, ok: false),
       ),
     );
@@ -413,13 +443,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       TextField(controller: c, keyboardType: keyboard, decoration: _dec(label));
 }
 
-// ---------------- Change password sheet ----------------
+// ---------------- Change password sheet (OTP by email) ----------------
 class _ChangePasswordSheet extends StatefulWidget {
   final String lang;
+  final String email;
   final VoidCallback onDone;
   final void Function(String) onError;
   const _ChangePasswordSheet({
     required this.lang,
+    required this.email,
     required this.onDone,
     required this.onError,
   });
@@ -429,20 +461,24 @@ class _ChangePasswordSheet extends StatefulWidget {
 }
 
 class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
-  final _current = TextEditingController();
   final _new = TextEditingController();
   final _confirm = TextEditingController();
+  final _otp = TextEditingController();
+  /// Password fields whose text is currently revealed (eye toggle).
+  final Set<TextEditingController> _visiblePw = {};
+  bool _otpStep = false; // false = enter new password, true = enter OTP
   bool _loading = false;
 
   @override
   void dispose() {
-    _current.dispose();
     _new.dispose();
     _confirm.dispose();
+    _otp.dispose();
     super.dispose();
   }
 
-  Future<void> _save() async {
+  /// Step 1: validate the new password, then ask the backend to email an OTP.
+  Future<void> _requestOtp() async {
     final lang = widget.lang;
     if (_new.text.length < 8) {
       widget.onError(tr('password_short', lang));
@@ -454,8 +490,27 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
     }
     setState(() => _loading = true);
     try {
-      await Api.dio.patch('/auth/password', data: {
-        'currentPassword': _current.text,
+      await Api.dio.post('/auth/password/request-otp');
+      if (!mounted) return;
+      setState(() => _otpStep = true);
+    } catch (e) {
+      widget.onError(Api.message(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Step 2: verify the OTP; on success the password is updated.
+  Future<void> _confirmOtp() async {
+    final lang = widget.lang;
+    if (_otp.text.trim().length != 6) {
+      widget.onError(tr('otp_invalid', lang));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await Api.dio.post('/auth/password/confirm-otp', data: {
+        'code': _otp.text.trim(),
         'newPassword': _new.text,
       });
       if (mounted) Navigator.pop(context);
@@ -467,9 +522,19 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
     }
   }
 
+  Future<void> _resend() async {
+    setState(() => _loading = true);
+    try {
+      await Api.dio.post('/auth/password/request-otp');
+    } catch (e) {
+      widget.onError(Api.message(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final lang = widget.lang;
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -480,36 +545,377 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(tr('change_password', lang),
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          _f(_current, tr('current_password', lang)),
-          const SizedBox(height: 12),
-          _f(_new, tr('new_password', lang)),
-          const SizedBox(height: 12),
-          _f(_confirm, tr('confirm_password', lang)),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _loading ? null : _save,
-            style: FilledButton.styleFrom(
-              backgroundColor: kBrand,
-              minimumSize: const Size.fromHeight(50),
-            ),
-            child: Text(_loading ? tr('saving', lang) : tr('save', lang)),
-          ),
-        ],
+        children: _otpStep ? _otpView() : _formView(),
       ),
     );
   }
 
-  Widget _f(TextEditingController c, String label) => TextField(
-        controller: c,
-        obscureText: true,
+  // ---- Step 1: email (read-only) + new password + confirm ----
+  List<Widget> _formView() {
+    final lang = widget.lang;
+    final muted =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+    return [
+      Text(tr('change_password', lang),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 16),
+      TextField(
+        readOnly: true,
+        controller: TextEditingController(text: widget.email),
         decoration: InputDecoration(
-          labelText: label,
+          labelText: tr('email', lang),
+          prefixIcon: const Icon(Icons.email_outlined, color: kBrand),
+          filled: true,
+          fillColor: kBrand.withValues(alpha: 0.05),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-      );
+      ),
+      const SizedBox(height: 6),
+      Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, size: 14, color: kBrand),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(tr('otp_will_be_sent', lang),
+                style: TextStyle(fontSize: 12, color: muted)),
+          ),
+        ],
+      ),
+      const SizedBox(height: 14),
+      _pw(_new, tr('new_password', lang)),
+      const SizedBox(height: 12),
+      _pw(_confirm, tr('confirm_password', lang)),
+      const SizedBox(height: 22),
+      FilledButton(
+        onPressed: _loading ? null : _requestOtp,
+        style: FilledButton.styleFrom(
+          backgroundColor: kBrand,
+          minimumSize: const Size.fromHeight(50),
+        ),
+        child: Text(_loading ? tr('sending', lang) : tr('change_password', lang)),
+      ),
+    ];
+  }
+
+  // ---- Step 2: enter the OTP mailed to the user ----
+  List<Widget> _otpView() {
+    final lang = widget.lang;
+    final muted =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+    return [
+      Center(
+        child: Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: kBrand.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.mark_email_read_outlined,
+              color: kBrand, size: 32),
+        ),
+      ),
+      const SizedBox(height: 14),
+      Center(
+        child: Text(tr('enter_otp', lang),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      ),
+      const SizedBox(height: 6),
+      Center(
+        child: Text(
+          '${tr('otp_sent_to', lang)}\n${widget.email}',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: muted),
+        ),
+      ),
+      const SizedBox(height: 20),
+      TextField(
+        controller: _otp,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        maxLength: 6,
+        style: const TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 12,
+          color: kBrand,
+        ),
+        decoration: InputDecoration(
+          counterText: '',
+          hintText: '••••••',
+          hintStyle: TextStyle(
+              letterSpacing: 12,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+          filled: true,
+          fillColor: kBrand.withValues(alpha: 0.05),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: kBrand.withValues(alpha: 0.3)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: kBrand, width: 1.8),
+          ),
+        ),
+      ),
+      const SizedBox(height: 18),
+      FilledButton(
+        onPressed: _loading ? null : _confirmOtp,
+        style: FilledButton.styleFrom(
+          backgroundColor: kBrand,
+          minimumSize: const Size.fromHeight(50),
+        ),
+        child: Text(_loading ? tr('verifying', lang) : tr('confirm', lang)),
+      ),
+      const SizedBox(height: 4),
+      TextButton(
+        onPressed: _loading ? null : _resend,
+        child: Text(tr('resend_otp', lang),
+            style: const TextStyle(color: kBrand)),
+      ),
+    ];
+  }
+
+  Widget _pw(TextEditingController c, String label) {
+    final show = _visiblePw.contains(c);
+    return TextField(
+      controller: c,
+      obscureText: !show,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.lock_outline, color: kBrand),
+        // Eye toggle to reveal the password.
+        suffixIcon: IconButton(
+          icon: Icon(
+            show ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            size: 20,
+          ),
+          onPressed: () => setState(() {
+            if (show) {
+              _visiblePw.remove(c);
+            } else {
+              _visiblePw.add(c);
+            }
+          }),
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+}
+
+// ---------------- Update email sheet (OTP to the NEW address) ----------------
+class _UpdateEmailSheet extends StatefulWidget {
+  final String lang;
+  final String currentEmail;
+  final VoidCallback onDone;
+  final void Function(String) onError;
+  const _UpdateEmailSheet({
+    required this.lang,
+    required this.currentEmail,
+    required this.onDone,
+    required this.onError,
+  });
+
+  @override
+  State<_UpdateEmailSheet> createState() => _UpdateEmailSheetState();
+}
+
+class _UpdateEmailSheetState extends State<_UpdateEmailSheet> {
+  final _email = TextEditingController();
+  final _otp = TextEditingController();
+  bool _otpStep = false; // false = enter new email, true = enter OTP
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _otp.dispose();
+    super.dispose();
+  }
+
+  /// Step 1: ask the backend to mail a code to the NEW address.
+  Future<void> _requestOtp() async {
+    final lang = widget.lang;
+    final value = _email.text.trim();
+    if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(value)) {
+      widget.onError(tr('invalid_email', lang));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await Api.dio.post('/auth/email/request-otp', data: {'newEmail': value});
+      if (!mounted) return;
+      setState(() => _otpStep = true);
+    } catch (e) {
+      widget.onError(Api.message(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Step 2: verify the code; on success the account switches to the new email.
+  Future<void> _confirmOtp() async {
+    final lang = widget.lang;
+    if (_otp.text.trim().length != 6) {
+      widget.onError(tr('otp_invalid', lang));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await Api.dio
+          .post('/auth/email/confirm-otp', data: {'code': _otp.text.trim()});
+      if (mounted) Navigator.pop(context);
+      widget.onDone();
+    } catch (e) {
+      widget.onError(Api.message(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 4,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _otpStep ? _otpView() : _formView(),
+      ),
+    );
+  }
+
+  // ---- Step 1: current email (read-only) + new email ----
+  List<Widget> _formView() {
+    final lang = widget.lang;
+    final muted =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+    return [
+      Text(tr('update_email', lang),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 16),
+      TextField(
+        readOnly: true,
+        controller: TextEditingController(text: widget.currentEmail),
+        decoration: InputDecoration(
+          labelText: tr('current_email', lang),
+          prefixIcon: const Icon(Icons.email_outlined, color: kBrand),
+          filled: true,
+          fillColor: kBrand.withValues(alpha: 0.05),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _email,
+        keyboardType: TextInputType.emailAddress,
+        decoration: InputDecoration(
+          labelText: tr('new_email', lang),
+          prefixIcon: const Icon(Icons.alternate_email_rounded, color: kBrand),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      const SizedBox(height: 6),
+      Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, size: 14, color: kBrand),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(tr('email_otp_hint', lang),
+                style: TextStyle(fontSize: 12, color: muted)),
+          ),
+        ],
+      ),
+      const SizedBox(height: 22),
+      FilledButton(
+        onPressed: _loading ? null : _requestOtp,
+        style: FilledButton.styleFrom(
+          backgroundColor: kBrand,
+          minimumSize: const Size.fromHeight(50),
+        ),
+        child: Text(_loading ? tr('sending', lang) : tr('send_otp', lang)),
+      ),
+    ];
+  }
+
+  // ---- Step 2: enter the code mailed to the new address ----
+  List<Widget> _otpView() {
+    final lang = widget.lang;
+    final muted =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+    return [
+      Center(
+        child: Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: kBrand.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.mark_email_read_outlined,
+              color: kBrand, size: 32),
+        ),
+      ),
+      const SizedBox(height: 14),
+      Center(
+        child: Text(tr('enter_otp', lang),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      ),
+      const SizedBox(height: 6),
+      Center(
+        child: Text(
+          '${tr('otp_sent_to', lang)}\n${_email.text.trim()}',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: muted),
+        ),
+      ),
+      const SizedBox(height: 20),
+      TextField(
+        controller: _otp,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        maxLength: 6,
+        style: const TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 12,
+          color: kBrand,
+        ),
+        decoration: InputDecoration(
+          counterText: '',
+          hintText: '••••••',
+          filled: true,
+          fillColor: kBrand.withValues(alpha: 0.05),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: kBrand.withValues(alpha: 0.3)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: kBrand, width: 1.8),
+          ),
+        ),
+      ),
+      const SizedBox(height: 18),
+      FilledButton(
+        onPressed: _loading ? null : _confirmOtp,
+        style: FilledButton.styleFrom(
+          backgroundColor: kBrand,
+          minimumSize: const Size.fromHeight(50),
+        ),
+        child: Text(_loading ? tr('verifying', lang) : tr('confirm', lang)),
+      ),
+      TextButton(
+        onPressed: _loading ? null : _requestOtp,
+        child:
+            Text(tr('resend_otp', lang), style: const TextStyle(color: kBrand)),
+      ),
+    ];
+  }
 }

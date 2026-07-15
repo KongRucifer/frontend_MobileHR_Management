@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../approvals/inbox_page.dart';
 import '../history/history_page.dart';
+import '../history/history_provider.dart';
 import '../home/home_page.dart';
 import '../home/home_provider.dart';
 import '../profile/profile_page.dart';
@@ -20,6 +23,24 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   int _index = 0;
+  StreamSubscription<RemoteMessage>? _msgSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // When a push arrives while the app is open, refresh the bell badge + list
+    // (the sound itself is handled by PushService).
+    _msgSub = FirebaseMessaging.onMessage.listen((_) {
+      ref.invalidate(unreadCountProvider);
+      ref.invalidate(notificationsProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _msgSub?.cancel();
+    super.dispose();
+  }
 
   static const _pages = [
     HomePage(),
@@ -45,14 +66,18 @@ class _MainShellState extends ConsumerState<MainShell> {
     switch (i) {
       case 2: // My requests
         ref.invalidate(myLeaveProvider);
-        ref.invalidate(mySickProvider);
+        ref.invalidate(myEmergencyProvider);
         break;
       case 3: // Manage leave (inbox)
         ref.invalidate(inboxProvider);
         ref.invalidate(unreadCountProvider);
         break;
-      case 4: // Work history
-        ref.invalidate(historyProvider);
+      case 4: // Work history (summary)
+        // Invalidating the family ROOT drops every cached range. The chosen
+        // month lives in summaryRangeProvider (a StateProvider outside the
+        // widget), so it survives — only the data refetches.
+        ref.invalidate(attendanceSummaryProvider);
+        ref.invalidate(attendanceHistoryProvider);
         ref.invalidate(todayProvider);
         break;
     }

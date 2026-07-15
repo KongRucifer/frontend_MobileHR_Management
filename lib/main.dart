@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/push_service.dart';
 import 'core/settings.dart';
 import 'core/storage.dart';
 import 'core/theme.dart';
@@ -9,7 +11,12 @@ import 'features/shell/main_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Load config from the bundled .env asset (API_BASE_URL, ...).
+  await dotenv.load(fileName: '.env');
   await Storage.init();
+  // Firebase + local-notification channel (with custom sound) and the
+  // background message handler. Best-effort — no-op if Firebase isn't set up.
+  await PushService.initEarly();
   runApp(const ProviderScope(child: HRApp()));
 }
 

@@ -8,6 +8,8 @@ import '../../core/settings.dart';
 import '../../core/theme.dart';
 import '../../models/attendance.dart';
 import '../auth/auth_provider.dart';
+import '../history/history_provider.dart';
+import '../requests/request_widgets.dart';
 import 'home_provider.dart';
 import 'slide_action.dart';
 import 'wifi_service.dart';
@@ -46,7 +48,9 @@ class _HomePageState extends ConsumerState<HomePage> {
         'bssid': wifi.bssid ?? '',
       });
       ref.invalidate(todayProvider);
-      ref.invalidate(historyProvider);
+      // Both: a check-in changes the day's row AND the month's workedDays count.
+      ref.invalidate(attendanceSummaryProvider);
+      ref.invalidate(attendanceHistoryProvider);
       _toast(
         tr(isCheckIn ? 'checkin_success' : 'checkout_success', lang),
         ok: true,
@@ -77,7 +81,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     final gray = onSurface.withValues(alpha: 0.55);
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr('app_name', lang))),
+      appBar: AppBar(
+        title: Text(tr('app_name', lang)),
+        actions: const [NotifBell(), SizedBox(width: 4)],
+      ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(todayProvider),
         child: ListView(

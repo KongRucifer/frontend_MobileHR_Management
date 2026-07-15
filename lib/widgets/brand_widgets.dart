@@ -175,6 +175,77 @@ class BrandLogo extends StatelessWidget {
   }
 }
 
+/// The wordmark that sits UNDER the logo image:
+///
+///     HR MANAGEMENT
+///   — PEOPLE. CULTURE. SUCCESS. —
+///
+/// Written as text (the logo image itself is untouched). The navy reads well on
+/// white but vanishes on a dark background, so the colours flip in dark mode.
+class BrandWordmark extends StatelessWidget {
+  /// Scales the whole wordmark (1 = default, e.g. 0.85 for tighter spots).
+  final double scale;
+  const BrandWordmark({super.key, this.scale = 1});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final hrColor = dark ? const Color(0xFFEAF2FB) : const Color(0xFF16264A);
+    final mgColor = dark ? const Color(0xFF9DBBDD) : const Color(0xFF2E5C8A);
+    final tagColor = dark ? const Color(0xFF6FB6E8) : const Color(0xFF2E6DA4);
+    final ruleColor = tagColor.withValues(alpha: 0.45);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // "HR" heavy + dark, "MANAGEMENT" lighter — as on the brand sheet.
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(
+              text: 'HR',
+              style: TextStyle(
+                color: hrColor,
+                fontWeight: FontWeight.w800,
+                fontSize: 26 * scale,
+                letterSpacing: 0.5,
+              ),
+            ),
+            TextSpan(
+              text: ' MANAGEMENT',
+              style: TextStyle(
+                color: mgColor,
+                fontWeight: FontWeight.w500,
+                fontSize: 26 * scale,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ]),
+        ),
+        SizedBox(height: 7 * scale),
+        // Tagline flanked by short rules.
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 20 * scale, height: 1, color: ruleColor),
+            SizedBox(width: 8 * scale),
+            Text(
+              'PEOPLE. CULTURE. SUCCESS.',
+              style: TextStyle(
+                color: tagColor,
+                fontSize: 9 * scale,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.5 * scale,
+              ),
+            ),
+            SizedBox(width: 8 * scale),
+            Container(width: 20 * scale, height: 1, color: ruleColor),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 /// Language (LO/EN) + dark-mode toggles, used on the auth screen.
 class TopToggles extends ConsumerWidget {
   const TopToggles({super.key});

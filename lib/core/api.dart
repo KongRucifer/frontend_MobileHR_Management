@@ -1,12 +1,15 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'storage.dart';
 
-/// Base URL of the NestJS backend.
+/// Base URL of the NestJS backend, read from .env (API_BASE_URL).
+/// See .env.example for the values to use per platform:
 /// - Physical device over USB: run `adb reverse tcp:3000 tcp:3000` once, then
 ///   localhost on the phone forwards to the PC's localhost:3000.
 /// - Android emulator: use http://10.0.2.2:3000/api
 /// - Physical device over WiFi: use the PC LAN IP, e.g. http://192.168.110.54:3000/api
-const String kApiBaseUrl = 'http://localhost:3000/api';
+String get kApiBaseUrl =>
+    dotenv.maybeGet('API_BASE_URL') ?? 'http://localhost:3000/api';
 
 class Api {
   static final Dio dio = _build();

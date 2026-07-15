@@ -55,3 +55,10 @@ cd mobile && adb reverse tcp:3000 tcp:3000 && flutter run (app)
 ແລ້ວແກ້ code → ກົດ r ໃນ terminal ຂອງ flutter run → ເຫັນຜົນທັນທີ.
 
 ຢາກໃຫ້ຂ້ອຍຊ່ວຍ run ໃຫ້ ຫຼື ມີ error ຕອນ run ບໍ? 🚀
+
+
+
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" uninstall la.hrapp.hr_app
+
+
+flutter run -d e23ddfb9

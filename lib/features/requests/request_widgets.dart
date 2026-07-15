@@ -15,6 +15,62 @@ String prettyDate(dynamic iso) {
   return d == null ? iso.toString() : DateFormat('dd MMM yyyy').format(d);
 }
 
+// ---------------------------------------------------------------------------
+// Duration helpers (mirror the backend's rules so the form can preview live)
+// ---------------------------------------------------------------------------
+
+/// "HH:mm" from a TimeOfDay.
+String hhmm(TimeOfDay t) =>
+    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+/// Minutes since midnight from "HH:mm" or "HH:mm:ss".
+int timeToMinutes(String time) {
+  final p = time.split(':');
+  return (int.tryParse(p[0]) ?? 0) * 60 +
+      (p.length > 1 ? (int.tryParse(p[1]) ?? 0) : 0);
+}
+
+/// Inclusive day count between two dates (same day = 1, 14th..16th = 3).
+int countDays(DateTime start, DateTime end) {
+  final a = DateTime(start.year, start.month, start.day);
+  final b = DateTime(end.year, end.month, end.day);
+  return b.difference(a).inDays + 1;
+}
+
+/// Working hours the window covers: counted PER DAY and clamped to the
+/// employee's work schedule (hours outside the working window don't count).
+/// Returns 0 when there is no overlap at all → "outside working hours".
+double countWorkHours({
+  required TimeOfDay start,
+  required TimeOfDay end,
+  required int days,
+  Map<String, dynamic>? schedule,
+}) {
+  final reqStart = start.hour * 60 + start.minute;
+  final reqEnd = end.hour * 60 + end.minute;
+  final winStart = schedule?['startTime'] != null
+      ? timeToMinutes(schedule!['startTime'].toString())
+      : reqStart;
+  final winEnd = schedule?['endTime'] != null
+      ? timeToMinutes(schedule!['endTime'].toString())
+      : reqEnd;
+  final overlap =
+      (reqEnd < winEnd ? reqEnd : winEnd) - (reqStart > winStart ? reqStart : winStart);
+  if (overlap <= 0) return 0;
+  return (overlap / 60) * days;
+}
+
+/// Trims a trailing ".0" so 24.0 reads as "24" but 8.5 stays "8.5".
+String prettyNum(num n) =>
+    n % 1 == 0 ? n.toInt().toString() : n.toStringAsFixed(2);
+
+/// "Total 3 day(s) · 24 hour(s)" — hours omitted when null.
+String summaryText(String lang, int days, num? hours) {
+  final d = '${tr('total_label', lang)} $days ${tr('day_unit', lang)}';
+  if (hours == null) return d;
+  return '$d · ${prettyNum(hours)} ${tr('hour_unit', lang)}';
+}
+
 Color statusColor(String status) {
   switch (status) {
     case 'approved':

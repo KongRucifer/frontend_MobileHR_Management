@@ -13,17 +13,24 @@ final leaveChainProvider =
   return _asList(res.data);
 });
 
-/// Active sick/illness types (for the request form).
-final sickTypesProvider =
+/// Active LEAVE types (for the request form).
+final leaveTypesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final res = await Api.dio.get('/requests/sick-types');
+  final res = await Api.dio.get('/requests/leave-types');
   return _asList(res.data);
 });
 
-/// The pool of approvers the employee may pick ONE from for a sick request.
-final sickPoolProvider =
+/// Active EMERGENCY (ສຸກເສີນ) types (for the request form).
+final emergencyTypesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final res = await Api.dio.get('/requests/sick-approvers');
+  final res = await Api.dio.get('/requests/emergency-types');
+  return _asList(res.data);
+});
+
+/// The pool of approvers the employee may pick ONE from for an emergency request.
+final emergencyPoolProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final res = await Api.dio.get('/requests/emergency-approvers');
   return _asList(res.data);
 });
 
@@ -34,14 +41,14 @@ final myLeaveProvider =
   return _asList(res.data);
 });
 
-/// The logged-in employee's own sick requests.
-final mySickProvider =
+/// The logged-in employee's own emergency requests.
+final myEmergencyProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final res = await Api.dio.get('/requests/sick/mine');
+  final res = await Api.dio.get('/requests/emergency/mine');
   return _asList(res.data);
 });
 
-/// Combined inbox of leave + sick requests this user can act on / has acted on.
+/// Combined inbox of leave + emergency requests this user can act on.
 final inboxProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final res = await Api.dio.get('/requests/inbox');
@@ -64,31 +71,42 @@ final unreadCountProvider = FutureProvider.autoDispose<int>((ref) async {
 /// Mutations (kept as plain calls; pages invalidate the relevant providers).
 class RequestsApi {
   static Future<void> createLeave({
+    required String leaveTypeId,
     required String reason,
     required String startDate,
     required String endDate,
   }) async {
     await Api.dio.post('/requests/leave', data: {
+      'leaveTypeId': leaveTypeId,
       'reason': reason,
       'startDate': startDate,
       'endDate': endDate,
     });
   }
 
-  static Future<void> createSick({
-    required String sickTypeId,
+  static Future<void> createEmergency({
+    required String emergencyTypeId,
     required String approverUserId,
     required String reason,
+    required String startDate,
+    required String endDate,
+    // Optional "HH:mm" window — send both or neither (whole-day request).
+    String? startTime,
+    String? endTime,
   }) async {
-    await Api.dio.post('/requests/sick', data: {
-      'sickTypeId': sickTypeId,
+    await Api.dio.post('/requests/emergency', data: {
+      'emergencyTypeId': emergencyTypeId,
       'approverUserId': approverUserId,
       'reason': reason,
+      'startDate': startDate,
+      'endDate': endDate,
+      if (startTime != null) 'startTime': startTime,
+      if (endTime != null) 'endTime': endTime,
     });
   }
 
   static Future<void> decide({
-    required String type, // 'leave' | 'sick'
+    required String type, // 'leave' | 'emergency'
     required String id,
     required bool approve,
     String? comment,

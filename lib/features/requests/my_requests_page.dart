@@ -54,7 +54,7 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage>
   }
 }
 
-/// Filtered list of the requester's own leave + sick requests by [status].
+/// Filtered list of the requester's own leave + emergency requests by [status].
 class _RequestList extends ConsumerWidget {
   final String status;
   const _RequestList({required this.status});
@@ -63,12 +63,12 @@ class _RequestList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final lang = ref.watch(localeProvider);
     final leaveAsync = ref.watch(myLeaveProvider);
-    final sickAsync = ref.watch(mySickProvider);
+    final emgAsync = ref.watch(myEmergencyProvider);
 
-    final loading = leaveAsync.isLoading || sickAsync.isLoading;
+    final loading = leaveAsync.isLoading || emgAsync.isLoading;
     final all = <Map<String, dynamic>>[
       ...(leaveAsync.value ?? []),
-      ...(sickAsync.value ?? []),
+      ...(emgAsync.value ?? []),
     ]..sort((a, b) => (b['createdAt'] ?? '')
         .toString()
         .compareTo((a['createdAt'] ?? '').toString()));
@@ -80,7 +80,7 @@ class _RequestList extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(myLeaveProvider);
-        ref.invalidate(mySickProvider);
+        ref.invalidate(myEmergencyProvider);
       },
       child: loading && all.isEmpty
           ? const Center(child: CircularProgressIndicator())
@@ -134,8 +134,8 @@ class _RequestCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 isLeave
-                    ? tr('leave', lang)
-                    : '${tr('sick', lang)} · ${r['sickType'] ?? ''}',
+                    ? '${tr('leave', lang)}${r['leaveType'] != null ? ' · ${r['leaveType']}' : ''}'
+                    : '${tr('emergency', lang)}${r['emergencyType'] != null ? ' · ${r['emergencyType']}' : ''}',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               const Spacer(),
@@ -143,12 +143,30 @@ class _RequestCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          if (isLeave)
+          // Both leave and emergency carry a date range (+ optional time window).
+          if (r['startDate'] != null && r['endDate'] != null)
             Text(
-              '${prettyDate(r['startDate'])}  →  ${prettyDate(r['endDate'])}',
+              '${prettyDate(r['startDate'])}${r['startTime'] != null ? ' ${r['startTime']}' : ''}'
+              '  →  '
+              '${prettyDate(r['endDate'])}${r['endTime'] != null ? ' ${r['endTime']}' : ''}',
               style: TextStyle(fontSize: 12, color: muted),
             ),
-          // Sick: show the single chosen approver so the requester knows who to wait for.
+          // Summary: total days (+ working hours when a time window was set).
+          if (r['days'] != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.event_available_rounded, size: 14, color: kBrand),
+                const SizedBox(width: 4),
+                Text(
+                  summaryText(lang, (r['days'] as num).toInt(), r['hours'] as num?),
+                  style: const TextStyle(
+                      fontSize: 12, color: kBrand, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
+          // Emergency: show the single chosen approver so the requester knows who to wait for.
           if (!isLeave && (r['approver']?['name'] ?? '').toString().isNotEmpty) ...[
             const SizedBox(height: 2),
             Row(
@@ -164,6 +182,32 @@ class _RequestCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(r['reason'].toString(),
                 maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+          // Approver's note (e.g. the reason a request was rejected).
+          if ((r['comment'] ?? '').toString().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: statusColor(status).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.chat_bubble_outline_rounded,
+                      size: 14, color: statusColor(status)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${tr('approver_comment', lang)}: ${r['comment']}',
+                      style: TextStyle(fontSize: 12, color: muted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           // Leave items open the timeline; show an affordance.
           if (isLeave) ...[

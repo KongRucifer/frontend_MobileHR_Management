@@ -21,15 +21,5 @@ final todayProvider = FutureProvider.autoDispose<Attendance?>((ref) async {
   return Attendance.fromJson(Map<String, dynamic>.from(res.data));
 });
 
-/// Attendance history (most recent first).
-final historyProvider =
-    FutureProvider.autoDispose<List<Attendance>>((ref) async {
-  final res = await Api.dio.get(
-    '/working/attendance/history',
-    queryParameters: {'limit': 60},
-  );
-  final items = (res.data['items'] as List?) ?? [];
-  return items
-      .map((e) => Attendance.fromJson(Map<String, dynamic>.from(e)))
-      .toList();
-});
+// Attendance history now lives in features/history/history_provider.dart as a
+// family keyed by date range + status filter (see attendanceHistoryProvider).
